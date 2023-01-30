@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/apex/log"
 	"github.com/opencontainers/umoci/pkg/fseval"
@@ -217,8 +218,13 @@ func (tg *tarGenerator) AddFile(name, path string) error {
 			// XXX: I'm not sure if we're unprivileged whether Lgetxattr can
 			//      fail with EPERM. If it can, we should ignore it (like when
 			//      we try to clear xattrs).
-			log.Warnf("unable to get xattr: %s", name)
-			continue
+
+			if err == syscall.ENODATA {
+				log.Warnf("unable to get xattr: %s", name)
+				continue
+			}
+
+			return errors.Wrapf(err, "get xattr: %s", name)
 		}
 		// https://golang.org/issues/20698 -- We don't just error out here
 		// because it's not _really_ a fatal error. Currently it's unclear
