@@ -280,6 +280,7 @@ func (te *TarExtractor) isDirlink(root string, path string) (bool, error) {
 }
 
 func (te *TarExtractor) ociWhiteout(root string, dir string, file string) error {
+	fmt.Printf("OCI WHITEOUT: %v %v\n", dir, file)
 	isOpaque := file == whOpaque
 	file = strings.TrimPrefix(file, whPrefix)
 
@@ -362,7 +363,7 @@ func (te *TarExtractor) ociWhiteout(root string, dir string, file string) error 
 	return errors.Wrap(err, "whiteout remove")
 }
 
-func (te *TarExtractor) overlayFSWhiteout(dir string, file string) error {
+func (te *TarExtractor) overlayFSWhiteout(dir string, file string, isDir bool) error {
 	isOpaque := file == whOpaque
 
 	// if this is an opaque whiteout, whiteout the directory
@@ -377,7 +378,15 @@ func (te *TarExtractor) overlayFSWhiteout(dir string, file string) error {
 		return errors.Wrapf(err, "couldn't create overlayfs whiteout for %s", p)
 	}
 
-	err := te.fsEval.Mknod(p, unix.S_IFCHR|0666, unix.Mkdev(0, 0))
+	fmt.Printf("OVERLAY WHITEOUT: %v %v\n", dir, file)
+
+	var err error
+	if isDir {
+		err = te.fsEval.Lsetxattr(dir, "user.overlay.opaque", []byte("y"), 0)
+	} else {
+		err = te.fsEval.Mknod(p, unix.S_IFCHR|0666, unix.Mkdev(0, 0))
+	}
+
 	return errors.Wrapf(err, "couldn't create overlayfs whiteout for %s", p)
 }
 
@@ -395,6 +404,8 @@ func (te *TarExtractor) UnpackEntry(root string, hdr *tar.Header, r io.Reader) (
 		"path": hdr.Name,
 		"type": hdr.Typeflag,
 	}).Debugf("unpacking entry")
+
+	fmt.Printf("unpacking entry: %v %v %v\n", root, hdr.Name, hdr.Typeflag)
 
 	// Get directory and filename, but we have to safely get the directory
 	// component of the path. SecureJoinVFS will evaluate the path itself,
@@ -488,7 +499,7 @@ func (te *TarExtractor) UnpackEntry(root string, hdr *tar.Header, r io.Reader) (
 		case OCIStandardWhiteout:
 			return te.ociWhiteout(root, dir, file)
 		case OverlayFSWhiteout:
-			return te.overlayFSWhiteout(dir, file)
+			return te.overlayFSWhiteout(dir, file, hdr.Typeflag == tar.TypeDir)
 		default:
 			return errors.Errorf("unknown whiteout mode %d", te.whiteoutMode)
 		}
@@ -498,10 +509,12 @@ func (te *TarExtractor) UnpackEntry(root string, hdr *tar.Header, r io.Reader) (
 	// with whiteouts because it turns out that lstat(2) will return EPERM if
 	// you try to stat a whiteout on AUFS.
 	fi, err := te.fsEval.Lstat(path)
+	fmt.Printf("FSTAT %v %v err:%v\n", path, fi, err)
 	if err != nil {
 		// File doesn't exist, just switch fi to the file header.
 		fi = hdr.FileInfo()
 	}
+	fmt.Printf("FSTAT %v %v mode:%v err:%v\n", path, fi, fi.Mode(), err)
 
 	// Attempt to create the parent directory of the path we're unpacking.
 	// We do a MkdirAll here because even though you need to have a tar entry
@@ -510,7 +523,14 @@ func (te *TarExtractor) UnpackEntry(root string, hdr *tar.Header, r io.Reader) (
 	// FIXME: We have to make this consistent, since if the tar archive doesn't
 	//        have entries for some of these components we won't be able to
 	//        verify that we have consistent results during unpacking.
-	if err := te.fsEval.MkdirAll(dir, 0777); err != nil {
+	finfo, err := os.Lstat(dir)
+	if err != nil {
+		fmt.Printf("MkdirAll - stat %v %v err:%v\n", dir, finfo, err)
+	} else {
+		fmt.Printf("MkdirAll - stat %v %v mode:%v err:%v\n", dir, finfo, finfo.Mode(), err)
+	}
+	if err := os.MkdirAll(dir, 0777); err != nil {
+		fmt.Printf("MkdirAll - %v\n", dir)
 		return errors.Wrap(err, "mkdir parent")
 	}
 
