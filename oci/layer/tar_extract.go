@@ -362,7 +362,7 @@ func (te *TarExtractor) ociWhiteout(root string, dir string, file string) error 
 	return errors.Wrap(err, "whiteout remove")
 }
 
-func (te *TarExtractor) overlayFSWhiteout(dir string, file string) error {
+func (te *TarExtractor) overlayFSWhiteout(dir string, file string, isDir bool) error {
 	isOpaque := file == whOpaque
 
 	// if this is an opaque whiteout, whiteout the directory
@@ -377,7 +377,13 @@ func (te *TarExtractor) overlayFSWhiteout(dir string, file string) error {
 		return errors.Wrapf(err, "couldn't create overlayfs whiteout for %s", p)
 	}
 
-	err := te.fsEval.Mknod(p, unix.S_IFCHR|0666, unix.Mkdev(0, 0))
+	var err error
+	if isDir {
+		err = te.fsEval.Lsetxattr(dir, "user.overlay.opaque", []byte("y"), 0)
+	} else {
+		err = te.fsEval.Mknod(p, unix.S_IFCHR|0666, unix.Mkdev(0, 0))
+	}
+
 	return errors.Wrapf(err, "couldn't create overlayfs whiteout for %s", p)
 }
 
@@ -488,7 +494,7 @@ func (te *TarExtractor) UnpackEntry(root string, hdr *tar.Header, r io.Reader) (
 		case OCIStandardWhiteout:
 			return te.ociWhiteout(root, dir, file)
 		case OverlayFSWhiteout:
-			return te.overlayFSWhiteout(dir, file)
+			return te.overlayFSWhiteout(dir, file, hdr.Typeflag == tar.TypeDir)
 		default:
 			return errors.Errorf("unknown whiteout mode %d", te.whiteoutMode)
 		}
