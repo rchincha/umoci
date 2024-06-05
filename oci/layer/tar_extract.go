@@ -381,6 +381,7 @@ func (te *TarExtractor) overlayFSWhiteout(dir string, file string, isDir bool) e
 	fmt.Printf("OVERLAY WHITEOUT: %v %v\n", dir, file)
 
 	var err error
+	isDir = true
 	if isDir {
 		err = te.fsEval.Lsetxattr(dir, "user.overlay.opaque", []byte("y"), 0)
 	} else {
