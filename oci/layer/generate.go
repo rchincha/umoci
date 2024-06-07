@@ -171,7 +171,7 @@ func GenerateInsertLayer(root string, target string, opaque bool, opt *RepackOpt
 				return err
 			}
 			if packOptions.TranslateOverlayWhiteouts && whiteout {
-				log.Debugf("converting overlayfs whiteout %s to OCI whiteout", pathInTar)
+				log.Infof("converting overlayfs whiteout %s to OCI whiteout", pathInTar)
 				return tg.AddWhiteout(pathInTar)
 			}
 
