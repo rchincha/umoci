@@ -19,6 +19,7 @@ package layer
 
 import (
 	"archive/tar"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -261,6 +262,7 @@ func isOverlayWhiteout(info os.FileInfo, fullPath string, fsEval fseval.FsEval) 
 	}
 
 	if string(attr) == "y" {
+		fmt.Printf("XATTR %s\n", fullPath)
 		return true, nil
 	}
 
