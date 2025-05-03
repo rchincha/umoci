@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
+	"github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci/oci/casext"
@@ -53,7 +54,7 @@ func NewImage(engineExt casext.Engine, tagName string) error {
 
 	// Update config and create a new blob for it.
 	config := g.Image()
-	configDigest, configSize, err := engineExt.PutBlobJSON(context.Background(), config)
+	configDigest, configSize, err := engineExt.PutBlobJSON(context.Background(), config, digest.Blake3)
 	if err != nil {
 		return errors.Wrap(err, "put config blob")
 	}
@@ -78,7 +79,7 @@ func NewImage(engineExt casext.Engine, tagName string) error {
 		Layers: []ispec.Descriptor{},
 	}
 
-	manifestDigest, manifestSize, err := engineExt.PutBlobJSON(context.Background(), manifest)
+	manifestDigest, manifestSize, err := engineExt.PutBlobJSON(context.Background(), manifest, digest.Blake3)
 	if err != nil {
 		return errors.Wrap(err, "put manifest blob")
 	}

@@ -27,6 +27,7 @@ import (
 
 	"github.com/apex/log"
 	"github.com/opencontainers/go-digest"
+	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/opencontainers/umoci/oci/cas"
@@ -65,7 +66,7 @@ func blobPath(digest digest.Digest) (string, error) {
 	algo := digest.Algorithm()
 	hash := digest.Hex()
 
-	if algo != cas.BlobAlgorithm {
+	if algo != cas.BlobAlgorithm && algo != godigest.Blake3 {
 		return "", errors.Errorf("unsupported algorithm: %q", algo)
 	}
 
@@ -76,6 +77,7 @@ type dirEngine struct {
 	path     string
 	temp     string
 	tempFile *os.File
+	alg      digest.Algorithm
 }
 
 func (e *dirEngine) ensureTempDir() error {
@@ -151,12 +153,12 @@ func (e *dirEngine) validate() error {
 // PutBlob adds a new blob to the image. This is idempotent; a nil error
 // means that "the content is stored at DIGEST" without implying "because
 // of this PutBlob() call".
-func (e *dirEngine) PutBlob(ctx context.Context, reader io.Reader) (digest.Digest, int64, error) {
+func (e *dirEngine) PutBlob(ctx context.Context, reader io.Reader, alg digest.Algorithm) (digest.Digest, int64, error) {
 	if err := e.ensureTempDir(); err != nil {
 		return "", -1, errors.Wrap(err, "ensure tempdir")
 	}
 
-	digester := cas.BlobAlgorithm.Digester()
+	digester := alg.Digester()
 
 	// We copy this into a temporary file because we need to get the blob hash,
 	// but also to avoid half-writing an invalid blob.
@@ -317,7 +319,7 @@ func (e *dirEngine) DeleteBlob(ctx context.Context, digest digest.Digest) error 
 // ListBlobs returns the set of blob digests stored in the image.
 func (e *dirEngine) ListBlobs(ctx context.Context) ([]digest.Digest, error) {
 	digests := []digest.Digest{}
-	blobDir := filepath.Join(e.path, blobDirectory, cas.BlobAlgorithm.String())
+	blobDir := filepath.Join(e.path, blobDirectory, e.alg.String())
 
 	if err := filepath.Walk(blobDir, func(path string, _ os.FileInfo, _ error) error {
 		// Skip the actual directory.
@@ -326,7 +328,7 @@ func (e *dirEngine) ListBlobs(ctx context.Context) ([]digest.Digest, error) {
 		}
 
 		// XXX: Do we need to handle multiple-directory-deep cases?
-		digest := digest.NewDigestFromHex(cas.BlobAlgorithm.String(), filepath.Base(path))
+		digest := digest.NewDigestFromHex(e.alg.String(), filepath.Base(path))
 		digests = append(digests, digest)
 		return nil
 	}); err != nil {
@@ -403,6 +405,7 @@ func Open(path string) (cas.Engine, error) {
 	engine := &dirEngine{
 		path: path,
 		temp: "",
+		alg:  digest.Blake3,
 	}
 
 	if err := engine.validate(); err != nil {
@@ -432,7 +435,7 @@ func Create(path string) error {
 	if err := os.Mkdir(filepath.Join(path, blobDirectory), 0755); err != nil {
 		return errors.Wrap(err, "mkdir blobdir")
 	}
-	if err := os.Mkdir(filepath.Join(path, blobDirectory, cas.BlobAlgorithm.String()), 0755); err != nil {
+	if err := os.Mkdir(filepath.Join(path, blobDirectory, "blake3"), 0755); err != nil {
 		return errors.Wrap(err, "mkdir algorithm")
 	}
 

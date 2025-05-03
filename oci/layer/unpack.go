@@ -261,7 +261,7 @@ func UnpackRootfs(ctx context.Context, engine cas.Engine, rootfsPath string, man
 			}
 		}
 
-		layerDigester := digest.SHA256.Digester()
+		layerDigester := digest.Blake3.Digester()
 		layer := io.TeeReader(layerRaw, layerDigester.Hash())
 
 		if err := UnpackLayer(rootfsPath, layer, opt); err != nil {

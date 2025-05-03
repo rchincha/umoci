@@ -66,6 +66,8 @@ type Mutator struct {
 	// Cached values of the configuration and manifest.
 	manifest *ispec.Manifest
 	config   *ispec.Image
+
+	alg digest.Algorithm
 }
 
 // Meta is a wrapper around the "safe" fields in ispec.Image, which can be
@@ -142,7 +144,13 @@ func New(engine cas.Engine, src casext.DescriptorPath) (*Mutator, error) {
 	return &Mutator{
 		engine: casext.NewEngine(engine),
 		source: src,
+		alg:    digest.SHA256,
 	}, nil
+}
+
+func (m *Mutator) WithAlgorithm(alg digest.Algorithm) *Mutator {
+	m.alg = alg
+	return m
 }
 
 // Config returns the current (cached) image configuration, which should be
@@ -257,7 +265,7 @@ func (m *Mutator) add(ctx context.Context, reader io.Reader, history *ispec.Hist
 		return "", -1, errors.Wrap(err, "getting cache failed")
 	}
 
-	diffidDigester := cas.BlobAlgorithm.Digester()
+	diffidDigester := m.alg.Digester()
 	hashReader := io.TeeReader(reader, diffidDigester.Hash())
 
 	compressed, err := compressor.Compress(hashReader)
@@ -266,7 +274,7 @@ func (m *Mutator) add(ctx context.Context, reader io.Reader, history *ispec.Hist
 	}
 	defer compressed.Close()
 
-	layerDigest, layerSize, err := m.engine.PutBlob(ctx, compressed)
+	layerDigest, layerSize, err := m.engine.PutBlob(ctx, compressed, m.alg)
 	if err != nil {
 		return "", -1, errors.Wrap(err, "put layer blob")
 	}
@@ -339,7 +347,7 @@ func (m *Mutator) Commit(ctx context.Context) (casext.DescriptorPath, error) {
 	}
 
 	// We first have to commit the configuration blob.
-	configDigest, configSize, err := m.engine.PutBlobJSON(ctx, m.config)
+	configDigest, configSize, err := m.engine.PutBlobJSON(ctx, m.config, m.alg)
 	if err != nil {
 		return casext.DescriptorPath{}, errors.Wrap(err, "commit mutated config blob")
 	}
@@ -351,7 +359,7 @@ func (m *Mutator) Commit(ctx context.Context) (casext.DescriptorPath, error) {
 	}
 
 	// Now commit the manifest.
-	manifestDigest, manifestSize, err := m.engine.PutBlobJSON(ctx, m.manifest)
+	manifestDigest, manifestSize, err := m.engine.PutBlobJSON(ctx, m.manifest, m.alg)
 	if err != nil {
 		return casext.DescriptorPath{}, errors.Wrap(err, "commit mutated manifest blob")
 	}
@@ -395,7 +403,7 @@ func (m *Mutator) Commit(ctx context.Context) (casext.DescriptorPath, error) {
 		// Re-commit the blob.
 		// TODO: This won't handle foreign blobs correctly, we need to make it
 		//       possible to write a modified blob through the blob API.
-		blobDigest, blobSize, err := m.engine.PutBlobJSON(ctx, parentBlob.Data)
+		blobDigest, blobSize, err := m.engine.PutBlobJSON(ctx, parentBlob.Data, m.alg)
 		if err != nil {
 			return casext.DescriptorPath{}, errors.Wrapf(err, "put json parent-%d blob", idx)
 		}

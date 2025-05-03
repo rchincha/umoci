@@ -66,7 +66,7 @@ type Engine interface {
 	// PutBlob adds a new blob to the image. This is idempotent; a nil error
 	// means that "the content is stored at DIGEST" without implying "because
 	// of this PutBlob() call".
-	PutBlob(ctx context.Context, reader io.Reader) (digest digest.Digest, size int64, err error)
+	PutBlob(ctx context.Context, reader io.Reader, alg digest.Algorithm) (digest digest.Digest, size int64, err error)
 
 	// GetBlob returns a reader for retrieving a blob from the image, which the
 	// caller must Close(). Returns ErrNotExist if the digest is not found.
